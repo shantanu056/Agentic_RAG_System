@@ -26,6 +26,23 @@ class DocumentLoader:
     def __init__(self, data_path: str):
         self.data_path = data_path
 
+    def _clean_text(self, text: str) -> str:
+        """
+        Basic text cleaning to fix formatting issues.
+        """
+
+        if not text:
+            return ""
+
+        # Replace line breaks with space
+        text = text.replace("\n", " ")
+
+        # Remove extra spaces
+        text = " ".join(text.split())
+
+        return text
+
+
     def load_documents(self) -> List[Document]:
         """
         Main orchestrator:
@@ -33,6 +50,7 @@ class DocumentLoader:
         - Routes to specific loaders
         - Returns unified Document list
         """
+
         documents = []
 
         for file_name in os.listdir(self.data_path):
@@ -63,13 +81,22 @@ class DocumentLoader:
         documents = []
 
         try:
-            # Try extracting text using LangChain loader
             loader = PyPDFLoader(file_path)
             docs = loader.load()
 
+            # Clean extracted text
+            cleaned_docs = []
+            for doc in docs:
+                cleaned_docs.append(
+                    Document(
+                        page_content=self._clean_text(doc.page_content),
+                        metadata=doc.metadata
+                    )
+                )
+
             # If meaningful text exists → return
-            if any(doc.page_content.strip() for doc in docs):
-                return docs
+            if any(doc.page_content.strip() for doc in cleaned_docs):
+                return cleaned_docs
 
         except Exception:
             pass  # fallback to OCR
@@ -78,7 +105,7 @@ class DocumentLoader:
         images = convert_from_path(file_path)
 
         for i, img in enumerate(images):
-            text = pytesseract.image_to_string(img)
+            text = self._clean_text(pytesseract.image_to_string(img))
 
             documents.append(
                 Document(
@@ -102,17 +129,29 @@ class DocumentLoader:
         loader = Docx2txtLoader(file_path)
         docs = loader.load()
 
-        return docs
+        cleaned_docs = []
+        for doc in docs:
+            cleaned_docs.append(
+                Document(
+                    page_content=self._clean_text(doc.page_content),
+                    metadata=doc.metadata
+                )
+            )
+
+        return cleaned_docs
 
 
     def _load_csv(self, file_path: str) -> List[Document]:
         """
         Uses LangChain CSV loader.
-        Each row becomes a Document (better for retrieval granularity).
+        Each row becomes a Document.
         """
 
         loader = CSVLoader(file_path)
         docs = loader.load()
+
+        for doc in docs:
+            doc.page_content = self._clean_text(doc.page_content)
 
         return docs
 
@@ -123,7 +162,7 @@ class DocumentLoader:
         """
 
         image = Image.open(file_path)
-        text = pytesseract.image_to_string(image)
+        text = self._clean_text(pytesseract.image_to_string(image))
 
         return [
             Document(
