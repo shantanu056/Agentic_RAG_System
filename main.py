@@ -7,6 +7,8 @@ from app.llm.llm_handler import LLMHandler
 from app.retrieval.reranker import Reranker
 from app.agents.query_classifier import QueryClassifier
 from app.agents.response_validator import ResponseValidator
+from app.agents.memory_agent import MemoryAgent
+from app.agents.adaptive_retrieval_agent import AdaptiveRetrievalAgent
 
 import os
 from dotenv import load_dotenv
@@ -50,6 +52,12 @@ if __name__ == "__main__":
     #Response Validator Agent:
     validator = ResponseValidator(llm)
 
+    #Adaptive Retrieval Agent:
+    adaptive_agent = AdaptiveRetrievalAgent(llm)
+
+    #Memory Agent:
+    memory_agent = MemoryAgent()
+
     # Step 7: Query loop
     while True:
         query = input("\n🔍 Enter your query (or type 'exit'): ")
@@ -65,15 +73,14 @@ if __name__ == "__main__":
         print(f"\n Query Type: {query_type}")
 
         if query_type == "retrieval":
+            
+            strategy = adaptive_agent.determine_strategy(query)
+            print(f"\n Retrieval Strategy: {strategy}")
 
             # Retrieval pipeline
-            retrieved_docs = retriever.retrieve(query)
+            retrieved_docs = retriever.retrieve(query,top_k=strategy["top_k"])
 
-            reranked_docs = reranker.rerank(
-                query,
-                retrieved_docs,
-                top_k=5
-            )
+            reranked_docs = reranker.rerank(query, retrieved_docs, top_k=strategy["rerank_k"])
 
             context = ""
 
@@ -81,8 +88,13 @@ if __name__ == "__main__":
                 context += f"""
             [Source {i+1}]
             {doc.page_content} """
+                
+            memory_context = memory_agent.get_context()
 
-            answer = llm.generate_response(query, context)
+            answer = llm.generate_response(query, context, memory_context)
+
+            #Store conversation after answer generation
+            memory_agent.add_interaction(user_query=query, assistant_response=answer)
 
         else:
             # Conversational response

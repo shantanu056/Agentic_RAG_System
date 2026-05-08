@@ -13,30 +13,35 @@ class LLMHandler:
             temperature=0  # deterministic answers
         )
 
-    def generate_response(self, query: str, context: str="") -> str:
+    def generate_response(
+    self,
+    query: str,
+    context: str = "",
+    memory_context: str = "") -> str:
         """
         Generates grounded response using retrieved context.
         """
 
         prompt = f"""
-You are a helpful AI assistant.
+            You are a helpful AI assistant.
 
-Answer the question using ONLY the context below.
+            STRICT RULES:
+            1. Answer ONLY from provided context and conversation history.
+            2. Do NOT hallucinate.
+            3. If answer is unavailable, say "I don't know."
+            4. Maintain conversational continuity.
 
-Guidelines:
-- Provide a COMPLETE explanation
-- Combine information from multiple context chunks
-- Be clear, structured and concise
-- If not found, say "I don't know"
+            Conversation History:
+            {memory_context}
 
-Context:
-{context}
+            Retrieved Context:
+            {context}
 
-Question:
-{query}
+            Current User Query:
+            {query}
 
-Answer:
-"""
+            Answer:
+            """
 
         response = self.llm.invoke(prompt)
 
