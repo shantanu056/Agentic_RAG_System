@@ -1,111 +1,34 @@
-from app.ingestion.loader import DocumentLoader
-from app.ingestion.chunker import DocumentChunker
-from app.ingestion.vector_store import VectorStoreManager
-from app.retrieval import reranker
-from app.retrieval.retriever import Retriever
-from app.llm.llm_handler import LLMHandler
-from app.retrieval.reranker import Reranker
-from app.agents.query_classifier import QueryClassifier
-from app.agents.response_validator import ResponseValidator
-from app.agents.memory_agent import MemoryAgent
-from app.agents.adaptive_retrieval_agent import AdaptiveRetrievalAgent
+from app.orchestration.rag_pipeline import RAGPipeline
 
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
+def main():
 
-if __name__ == "__main__":
-    # Step 1: Load documents
-    loader = DocumentLoader("data/")
-    docs = loader.load_documents()
-    print(f"Loaded {len(docs)} documents")
+    pipeline = RAGPipeline()
 
-    # Step 2: Chunk documents
-    chunker = DocumentChunker(chunk_size=500, chunk_overlap=50)
-    chunked_docs = chunker.split_documents(docs)
-    print(f"After chunking: {len(chunked_docs)} chunks")
-
-    # Step 3: Create vector store
-    vector_manager = VectorStoreManager()
-
-    if os.path.exists("vector_store"):
-        print("📂 Loading existing vector store...")
-        vector_store = vector_manager.load_vector_store()
-    else:
-        print("⚡ Creating new vector store...")
-        vector_store = vector_manager.create_vector_store(chunked_docs)
-        vector_manager.save_vector_store()
-
-        print("✅ Vector store created")
-
-    # Step 4: Initialize retriever
-    retriever = Retriever(vector_store, top_k=5)
-
-    # Step 5: Initialize LLM handler (for future use in answer generation)
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    llm = LLMHandler(groq_api_key)
-
-    #Query Classifier Agent:
-    classifier = QueryClassifier(llm)
-
-    #Response Validator Agent:
-    validator = ResponseValidator(llm)
-
-    #Adaptive Retrieval Agent:
-    adaptive_agent = AdaptiveRetrievalAgent(llm)
-
-    #Memory Agent:
-    memory_agent = MemoryAgent()
-
-    # Step 7: Query loop
     while True:
-        query = input("\n🔍 Enter your query (or type 'exit'): ")
+
+        query = input("\n Enter your query (or type 'exit'): ")
 
         if query.lower() == "exit":
             break
 
-        #Reranker:
-        reranker = Reranker()
-        
-        #Query Classification using Agent:
-        query_type = classifier.classify(query)
-        print(f"\n Query Type: {query_type}")
+        response = pipeline.run(query)
 
-        if query_type == "retrieval":
-            
-            strategy = adaptive_agent.determine_strategy(query)
-            print(f"\n Retrieval Strategy: {strategy}")
+        print(f"\n Query Type: {response['query_type']}")
 
-            # Retrieval pipeline
-            retrieved_docs = retriever.retrieve(query,top_k=strategy["top_k"])
+        if response["strategy"]:
+            print(
+                f"\n Retrieval Strategy: "
+                f"{response['strategy']}"
+            )
 
-            reranked_docs = reranker.rerank(query, retrieved_docs, top_k=strategy["rerank_k"])
-
-            context = ""
-
-            for i, doc in enumerate(reranked_docs):
-                context += f"""
-            [Source {i+1}]
-            {doc.page_content} """
-                
-            memory_context = memory_agent.get_context()
-
-            answer = llm.generate_response(query, context, memory_context)
-
-            #Store conversation after answer generation
-            memory_agent.add_interaction(user_query=query, assistant_response=answer)
-
-        else:
-            # Conversational response
-            answer = llm.llm.invoke(query).content
-        
-        
         print("\n Answer:\n")
-        print(answer)
+        print(response["answer"])
 
-        # Validate the response
-        validation_result = validator.validate(query, context, answer)
-        print("\n Validation Report:\n")
-        print(validation_result["validation_result"])
+        if response["validation"]:
+            print("\n Validation Report:\n")
+            print(response["validation"])
 
+
+if __name__ == "__main__":
+    main()
